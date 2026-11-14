@@ -19,7 +19,7 @@ function fixture(t, duration = 1) {
   const save = () => fs.writeFileSync(manifest, JSON.stringify(spec)); save();
   const calls = [], failures = new Set();
   const run = async (command, argv) => {
-    if (command === process.execPath && argv[0].endsWith('/render.mjs')) {
+    if (command === process.execPath && argv[0] === path.join(S, 'render.mjs')) {
       if (argv.includes('--determinism')) return; // Chapter cache tests replace rendering; acceptance remains real below.
       const id = path.basename(argv[1]), out = argv[argv.indexOf('--out') + 1], dur = argv[argv.indexOf('--duration') + 1];
       calls.push(id); if (failures.has(id)) throw new Error('injected renderer failure');
@@ -84,7 +84,7 @@ test('interrupted chapter work is never retried, including a real SIGINT forward
     try { await buildLong(${JSON.stringify(f.manifest)}, {skipQa:true,retries:2,run:async()=>{
       calls++;
       if(calls>1) throw Error('unexpected retry after SIGINT');
-      const timer=setTimeout(()=>process.kill(process.pid,'SIGINT'),100);
+      const timer=setTimeout(()=>process.platform==='win32' ? process.emit('SIGINT') : process.kill(process.pid,'SIGINT'),100);
       try {await runCommand(process.execPath,['-e','setInterval(()=>{},1000)']);} finally {clearTimeout(timer);}
     }}); process.exitCode=1;
     } catch(error) {console.log(JSON.stringify({calls,name:error.name,signal:error.signal,interrupted:error.interrupted}));}

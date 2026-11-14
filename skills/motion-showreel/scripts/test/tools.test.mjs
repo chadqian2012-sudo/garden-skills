@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync, spawn, execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { args } from '../lib/browser.mjs';
 import { seg, spring, springTo, tween, stagger, ease, camera3d, drawBoxes } from '../../assets/starter/motion.js';
 
@@ -109,10 +109,15 @@ test('render: a second render to the same --out is refused while the first runs'
 });
 test('render: interruption cleans up temp segments and the lock', async () => {
   const out = path.join(tmp, 'int.mp4');
-  const p = spawn(process.execPath, [path.join(S, 'render.mjs'), PAGE, '--size', '640x360', '--fps', '240', '--duration', '1', '--subframes', '4', '--out', out], { stdio: 'ignore' });
+  const argv = [path.join(S, 'render.mjs'), PAGE, '--size', '640x360', '--fps', '240', '--duration', '1', '--subframes', '4', '--out', out];
+  // Windows child.kill() terminates unconditionally; exercise the Ctrl-C handler.
+  const command = process.platform === 'win32' ? ['--input-type=module', '-e',
+    'setTimeout(()=>process.emit("SIGINT"),4000);process.argv=' + JSON.stringify([process.execPath, ...argv]) + ';await import(' + JSON.stringify(pathToFileURL(argv[0]).href) + ');'] : argv;
+  const p = spawn(process.execPath, command, { stdio: 'ignore' });
+  const closed = new Promise(r => p.once('close', r));
   await new Promise(r => setTimeout(r, 4000));
-  p.kill('SIGINT');
-  const code = await new Promise(r => p.on('close', r));
+  if (process.platform !== 'win32') p.kill('SIGINT');
+  const code = await closed;
   assert.notEqual(code, 0);
   assert.ok(!fs.existsSync(out));
   assert.deepEqual(leftovers(tmp), []);
@@ -292,16 +297,15 @@ test('inspect qa: a typo in the spec is an error, not a silently skipped check',
     assert.match(r.stderr, /^bad --/m);
   }
 });
-test('audio check: images that cannot be written fail; bad --drops fail', () => {
+test('audio check: unwritable output paths fail; bad --drops fail', () => {
   const score = path.join(tmp, 'img.mjs');
   fs.writeFileSync(score, `export const DUR = 2;\nexport default S => { S.bus('m').add(S.pad(S.chord('A3', 'min7'), 1.8), 0); };\n`);
   const wav = path.join(tmp, 'img.wav');
   assert.equal(node('audio.mjs', ['build', score, '--out', wav]).status, 0);
-  const ro = path.join(tmp, 'readonly'); fs.mkdirSync(ro); fs.chmodSync(ro, 0o555);
+  const ro = path.join(tmp, 'readonly'); fs.writeFileSync(ro, 'not a directory');
   const r = node('audio.mjs', ['check', wav, '--out', path.join(ro, 'x')]);
-  fs.chmodSync(ro, 0o755);
   assert.equal(r.status, 1, r.stdout);
-  assert.match(r.stderr, /could not write/);
+  assert.match(r.stderr, /^cannot create/);
   assert.doesNotMatch(r.stdout, /images:/);
   assert.equal(node('audio.mjs', ['check', wav, '--out', path.join(tmp, 'img'), '--drops', '1,abc']).status, 1);
   assert.equal(node('audio.mjs', ['check', wav, '--out', path.join(tmp, 'img')]).status, 0);
