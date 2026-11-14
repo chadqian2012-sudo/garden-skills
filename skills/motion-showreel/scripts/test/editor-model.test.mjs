@@ -27,7 +27,7 @@ test('saved process reports keep the beginning and end while console capture sta
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const report = path.join(root, 'qa.log');
   const expected = 'CHECKS\n' + 'x'.repeat(40000) + '\nREVIEW END\n';
-  const output = await runProcess(process.execPath, ['-e', `process.stdout.write(${JSON.stringify(expected)})`], newJob('report'), { stdoutFile: report });
+  const output = await runProcess(process.execPath, ['-e', "process.stdout.write('CHECKS\\n' + 'x'.repeat(40000) + '\\nREVIEW END\\n')"], newJob('report'), { stdoutFile: report });
   assert.equal(fs.readFileSync(report, 'utf8'), expected);
   assert.ok(output.length <= 16000, 'keeping a full report does not grow the in-memory console buffer');
 });
@@ -61,7 +61,7 @@ test('voice timing is locked; malicious ranges, duplicate clips, unknown paths a
   session.tracks = initialSession(project).tracks; session.tracks[0].file = '../secret.wav';
   assert.throws(() => validateSession(session, project), /Invalid track/);
   assert.throws(() => localFile(root, '../outside'), /relative/);
-  fs.symlinkSync(os.tmpdir(), path.join(root, 'escape'));
+  fs.symlinkSync(os.tmpdir(), path.join(root, 'escape'), 'junction');
   assert.throws(() => localFile(root, 'escape'), /outside/);
   const old = initialSession(project);
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=880:duration=4', path.join(root, 'audio/a.wav')]);

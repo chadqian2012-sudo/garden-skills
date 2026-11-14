@@ -30,7 +30,7 @@
 // --grain N adds temporal film grain in ffmpeg (keeps page frames compressible). 0 = none.
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { loadChromium, launch, serve, resolveTarget, openPage, warnSoftwareGL, parseSize, args, die } from './lib/browser.mjs';
 import { textHook } from './lib/text-hook.mjs';
 
@@ -320,7 +320,8 @@ async function video() {
   const tmp = fs.mkdtempSync(path.join(path.dirname(out), '.segs-'));
   cleanups.push(() => fs.rmSync(tmp, { recursive: true, force: true }));
   const procs = new Set();
-  cleanups.push(() => { for (const p of procs) p.kill('SIGKILL'); });
+  // Windows must release encoder handles before temporary files can be removed.
+  cleanups.push(() => { for (const p of procs) process.platform === 'win32' ? spawnSync('taskkill', ['/pid', String(p.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true }) : p.kill('SIGKILL'); });
   let aborted = null;
 
   const TOTAL = Math.round(dur * FPS), per = Math.ceil(TOTAL / WK), t0 = Date.now();
